@@ -1,10 +1,4 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*$py.class
-
-# C extensions
-*.so
-
+__pycache__/<<<<<<< HEAD
 .idea
 output/
-
