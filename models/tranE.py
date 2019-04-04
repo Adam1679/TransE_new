@@ -124,19 +124,6 @@ class TransE:
                     tempPositive=array([1 if tempPositive[i]>0 else -1 for i in range(tempPositive.__len__())])*self.learingRate
                     tempNegtative = array([1 if tempNegtative[i] > 0 else -1 for i in range(tempNegtative.__len__())])*self.learingRate
 
-                    # for i in range(self.dim):    #（比如列表推倒或者numpy的函数）向量维度
-                    #     if tempPositive[i] >= 0:  ##这 ndarray[]
-                    #         tempPositiveL1.append(1)
-                    #     else:
-                    #         tempPositiveL1.append(-1)
-                    #
-                    #     if tempNegtative[i] >= 0:   #这是负样本
-                    #         tempNegtativeL1.append(1)   # tempNegtativeL1 里面要么是+1，要么-1
-                    #     else:
-                    #         tempNegtativeL1.append(-1)
-                    # tempPositive = array(tempPositiveL1)  #这是n维数组
-                    # tempNegtative = array(tempNegtativeL1)
-
                 else:
                     tempPositive = 2 * self.learingRate * (tailEntityVectorBeforeBatch - headEntityVectorBeforeBatch - relationVectorBeforeBatch)
                     tempNegtative = 2 * self.learingRate * (tailEntityVectorWithCorruptedTripletBeforeBatch - headEntityVectorWithCorruptedTripletBeforeBatch - relationVectorBeforeBatch)
