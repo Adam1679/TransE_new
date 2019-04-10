@@ -21,24 +21,14 @@ class TransE:
         relationVectorList = {}
 
         for entity in self.entityList:
-            n = 0
-            entityVector = []
-            while n < self.dim:
-                ram = init(self.dim)  #初始化的范围  随机返回一个范围的数字 并将这个数字加入到实体向量的列表里 entityVector 就相当于[0.43242,0.435,0.42342,.....  ] 有dim 这么多个数字
-                entityVector.append(ram) #列表 把这个数加入到列表
-                n += 1  #记录有多少个实体向量
-            entityVector = norm(entityVector)
+            entityVector = norm(random.uniform(-6/(self.dim**0.5), 6/(self.dim**0.5), self.dim))
             entityVectorList[entity] = entityVector
+
         print(f"entityVector初始化完成，数量是{len(entityVectorList)}")
         for relation in self. relationList:
-            n = 0
-            relationVector = []
-            while n < self.dim:
-                ram = init(self.dim)   #初始化的范围
-                relationVector.append(ram)    #列表
-                n += 1
-            relationVector = norm(relationVector)   #归一化
+            relationVector = norm(norm(random.uniform(-6/(self.dim**0.5), 6/(self.dim**0.5), self.dim)))   #归一化
             relationVectorList[relation] = relationVector  #这是定义字典 类似于dict1['a']=b  {'a':b} 就是一个键值对 为每一个关系定义一个
+
         print("relationVectorList初始化完成，数量是%d"%len(relationVectorList))
         self.entityList = entityVectorList   #用实体向量链表初始化  字典
         self.relationList = relationVectorList
@@ -46,23 +36,16 @@ class TransE:
     def transE(self, cI = 20):
         print("训练开始")
         for cycleIndex in range(cI): #
-            Sbatch = self.getSample(150)  #150表示的是采样150个三元组 这是个列表 [(),(),(),,,,]  列表里面有元组
-            Tbatch = []     #元组对（原三元组，打碎的三元组）的列表 ：[((h,r,t),(h',r,t'))] Tbatch是个列表哦
+            self.loss = 0
+            Sbatch = sample(self.tripleList, 150)  #150表示的是采样150个三元组 这是个列表 [(),(),(),,,,]  列表里面有元组
+            Tbatch = set()     #元组对（原三元组，打碎的三元组）的列表 ：[((h,r,t),(h',r,t'))] Tbatch是个列表哦
             for sbatch in Sbatch: #原三元组  sbatch这是个元组  里面的圆括号
                 tripletWithCorruptedTriplet = (sbatch, self.getCorruptedTriplet(sbatch)) #是个元组  把这随机采样的150个三元组打乱  结构是这样的（（没替换的三元组），（替换完后的三元组））
-                if(tripletWithCorruptedTriplet not in Tbatch):
-                    Tbatch.append(tripletWithCorruptedTriplet)  #这是个列表 把上面的三元组加入到列表里面。tripletWithCorruptedTriplet是包含两个三元组的元组，Tbatch是列表
+                Tbatch.add(tripletWithCorruptedTriplet)  #这是个列表 把上面的三元组加入到列表里面。tripletWithCorruptedTriplet是包含两个三元组的元组，Tbatch是列表
 
             self.update(Tbatch)  #这部分是重点
             if cycleIndex % 50 == 0:
-                print("第%d次循环"%cycleIndex)
-                print(self.loss)
-                # self.writeRelationVector("../output/relationVector.txt")  #写关系向量和实体向量
-                # self.writeEntilyVector("../output/entityVector.txt")
-                # self.loss = 0
-
-    def getSample(self, size):
-        return sample(self.tripleList, size)  #从三元组里面随机采样size个三元组
+                print("第%d次循环, Loss: %.2f"%(cycleIndex, self.loss))
 
     def getCorruptedTriplet(self, triplet):
         '''
@@ -119,21 +102,21 @@ class TransE:
                 self.loss += eg
                 if self.L1:                     #（h+r-t）^2 - (h'+r-t')^2    想让正样本的d-pos 尽可能小，负样本的d-nag 尽可能大  平方里面可以换成 d-pos/d-nag=（t-h-r） t↓h↑r↑ 整个一项就减小
                     tempPositive = tailEntityVectorBeforeBatch - headEntityVectorBeforeBatch - relationVectorBeforeBatch  #这是没有替换的三元组
-                    tempNegtative = tailEntityVectorWithCorruptedTripletBeforeBatch - headEntityVectorWithCorruptedTripletBeforeBatch - relationVectorBeforeBatch #这是替换了的三元组
+                    tempCorrupted = tailEntityVectorWithCorruptedTripletBeforeBatch - headEntityVectorWithCorruptedTripletBeforeBatch - relationVectorBeforeBatch #这是替换了的三元组
 
                     tempPositive=array([1 if tempPositive[i]>0 else -1 for i in range(tempPositive.__len__())])*self.learingRate
-                    tempNegtative = array([1 if tempNegtative[i] > 0 else -1 for i in range(tempNegtative.__len__())])*self.learingRate
+                    tempCorrupted = array([1 if tempCorrupted[i] > 0 else -1 for i in range(tempCorrupted.__len__())])*self.learingRate
 
                 else:
                     tempPositive = 2 * self.learingRate * (tailEntityVectorBeforeBatch - headEntityVectorBeforeBatch - relationVectorBeforeBatch)
-                    tempNegtative = 2 * self.learingRate * (tailEntityVectorWithCorruptedTripletBeforeBatch - headEntityVectorWithCorruptedTripletBeforeBatch - relationVectorBeforeBatch)
-    
+                    tempCorrupted = 2 * self.learingRate * (tailEntityVectorWithCorruptedTripletBeforeBatch - headEntityVectorWithCorruptedTripletBeforeBatch - relationVectorBeforeBatch)
+
                 headEntityVector = headEntityVector + tempPositive   # t-r-h 使正样本距离小
                 tailEntityVector = tailEntityVector - tempPositive
-                relationVector = relationVector + tempPositive - tempNegtative
+                relationVector = relationVector + tempPositive - tempCorrupted
 
-                headEntityVectorWithCorruptedTriplet = headEntityVectorWithCorruptedTriplet - tempNegtative   #t'-r-h' 使负样本距离
-                tailEntityVectorWithCorruptedTriplet = tailEntityVectorWithCorruptedTriplet + tempNegtative
+                headEntityVectorWithCorruptedTriplet = headEntityVectorWithCorruptedTriplet - tempCorrupted   #t'-r-h' 使负样本距离
+                tailEntityVectorWithCorruptedTriplet = tailEntityVectorWithCorruptedTriplet + tempCorrupted
 
 
                #只归一化这几个刚更新的向量，而不是按原论文那些一口气全更新了
@@ -225,7 +208,7 @@ if __name__ == '__main__':
     dirTrain = "../data/FB15k/train.txt"
     tripleNum, tripleList = openTrain(dirTrain)
     print("打开TransE")
-    transE = TransE(entityList,relationList,tripleList, margin=1, dim = 100)
+    transE = TransE(entityList,relationList,tripleList, margin=1, dim = 100, L1=False)
     print("TranE初始化")
     transE.initialize()                #随机填充向量值
     transE.transE(15000)               #把元组对加入到【（），（），，】
