@@ -45,7 +45,7 @@ class TransE:
 
             self.update(Tbatch)  #这部分是重点
             if cycleIndex % 50 == 0:
-                print("第%d次循环, Loss: %.2f"%(cycleIndex, self.loss))
+                print("第%d次循环, Loss: %.2f"%(cycleIndex, self.loss/150))
 
     def getCorruptedTriplet(self, triplet):
         '''
