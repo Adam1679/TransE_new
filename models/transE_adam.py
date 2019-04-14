@@ -117,7 +117,7 @@ class transE(object):
 
                 # if count % 1000 == 0:
                 #     print(f"完成{count}个minibatch，损失函数为{self.batch_loss/self.batch_size}")
-        
+
             if self.metric:
                 m_valid = self.evaluate(self.validTriplet)
                 m_train = self.evaluate(self.data)
@@ -166,8 +166,8 @@ class transE(object):
     def getRandomEntity(self, entity):
         random_entity = entity
         while(random_entity == entity):
-            random_entity = random.sample(self.entityList, 1)
-        return random_entity[0]
+            random_entity = random.sample(self.entityList, 1)[0]
+        return random_entity
 
     def save(self, directory="output"):
         print("保存Entity Vector")
