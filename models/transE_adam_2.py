@@ -24,7 +24,7 @@ logger.info("Start print log")
 class transE(object):
     def __init__(self, triplet: list, relationId: dict, entityId: dict,
                  batch_size=64, learning_rate=0.01, dim=20, norm='L2', margin=2, seed=52,
-                 validTriplet=None, batch_test=False, optimizer='AdaGrad', evaluator='Relation_Evaluator'):
+                 validTriplet=None, testTriplet=None, batch_test=False, optimizer='AdaGrad', evaluator='Relation_Evaluator'):
         self.learning_rate = learning_rate  # 论文中{0.001, 0.01, 0.1}
         self.batch_size = batch_size
         self.norm = norm
@@ -47,10 +47,10 @@ class transE(object):
         opt = getattr(mod, optimizer)
         self.optimizers = {'relationMat': opt(self.relationMat, learning_rate),
                            'entityMat': opt(self.entityMat, learning_rate)}
-        if validTriplet:
+        if validTriplet and testTriplet:
             eval = getattr(mod, evaluator)
             self.evaluator = eval(encode2id(validTriplet, self.entityId, self.relationId),
-                                  encode2id(validTriplet+triplet, self.entityId, self.relationId))
+                                  encode2id(validTriplet+triplet+testTriplet, self.entityId, self.relationId))
         else:
             self.evaluator = None
 
@@ -63,21 +63,24 @@ class transE(object):
 
     def initialize(self):
         # 初始化向量
+        # bnd = 6 / (self.dim ** 0.5)
+        bnd = np.sqrt(6) / np.sqrt(self.entityMat.shape[0]+self.entityMat.shape[1])
         for e_ in self.entityList:
             self.entityMat[e_] = \
-                np.random.uniform(-6/(self.dim**0.5), 6/(self.dim**0.5), self.dim)
-        self.entityMat = normalize(self.entityMat)
+                np.random.uniform(-bnd, bnd, self.dim)
+        # self.entityMat = normalize(self.entityMat)
         logger.info(f"entityVector初始化完成，维度是{self.entityMat.shape}")
 
+        bnd = np.sqrt(6) / np.sqrt(self.relationMat.shape[0]+self.relationMat.shape[1])
         for p_ in self.relationList:
             self.relationMat[p_] = \
-                np.random.uniform(-6 / (self.dim ** 0.5), 6 / (self.dim ** 0.5), self.dim)
-        self.relationMat = normalize(self.relationMat)
+                np.random.uniform(-bnd, bnd, self.dim)
+        # self.relationMat = normalize(self.relationMat)
         logger.info(f"relationVectorList初始化完成，维度是{self.relationMat.shape}")
 
     def train(self, epoch=1000):
         logger.info('训练开始')
-        np.random.seed(self.seed)
+        # np.random.seed(self.seed)
         self.initialize()
         for self.epoch in range(epoch):
             self.loss = 0
@@ -101,7 +104,7 @@ class transE(object):
                 self.transE_update(pxs, nxs)
 
                 # if count % 1000 == 0:
-                #     logger.info(f"完成{count}个minibatch，损失函数为{self.batch_loss/self.batch_size}")
+                logger.info(f"完成{count}个minibatch，损失函数为{self.batch_loss}")
 
             self.x = logger.info(f"完成{self.epoch}轮训练，损失函数为{self.loss / len(self.data)}, 超过margin的样本数量为{self.violations}")
             if self.evaluator:
@@ -117,7 +120,7 @@ class transE(object):
         # 需要更新的sample的index array
         loss = np.maximum(self.margin + distance_p - distance_n, 0)
 
-        loss_ = np.sum(loss)
+        loss_ = np.mean(loss)
         self.loss += loss_
         self.batch_loss = loss_
         ind = np.where(loss > 0)[0]
@@ -130,14 +133,15 @@ class transE(object):
         h_n2, l_n2, t_n2 = list(h_n[ind]), list(l_n[ind]), list(t_n[ind])
 
         # step 1 : 计算d = (head + label - tail), gradient_p = (len(ind), dim)
-        gradient_p = self.entityMat[t_p2] - self.relationMat[l_p2] - self.entityMat[h_p2]
-        gradient_n = self.entityMat[t_n2] - self.relationMat[l_n2] - self.entityMat[h_n2]
+        gradient_p = self.entityMat[h_p2] + self.relationMat[l_p2] - self.entityMat[t_p2]
+        gradient_n = self.entityMat[h_n2] + self.relationMat[l_n2] - self.entityMat[t_n2]
+
         if self.norm == 'L1':
             # L1正则化的次梯度
-            gradient_p = np.sign(-gradient_p)
-            gradient_n = -np.sign(-gradient_n)
+            gradient_p = np.sign(gradient_p)
+            gradient_n = np.sign(gradient_n)
         else:
-            gradient_p = -gradient_p*2
+            gradient_p = gradient_p*2
             gradient_n = gradient_n*2
 
         # 所有需要更新的entity_id list
@@ -158,22 +162,21 @@ class transE(object):
         # gradient[0,0] = (0.1-0.1-0.18) / 3, 即0号entity在所有的正(负)样本的head(tail)中出现了3次（应该是偶数，我只是举例)
         M2_e = np.vstack((gradient_p, # 正样本的head的梯度
                         -gradient_p, # 正样本的tail的梯度
-                        gradient_n, # 负样本的head的梯度
-                        -gradient_n)) # 负样本的tail的梯度
+                        -gradient_n, # 负样本的head的梯度
+                        gradient_n)) # 负样本的tail的梯度
         gradient_e = M_e.dot(M2_e) / tot_update_time_e
 
         # step 4 : 计算每个relation的梯度
         tot_relations = l_p2 + l_n2
         unique_idx_r, M_r, tot_update_time_r = grad_sum_matrix(tot_relations)
         M2_r = np.vstack((gradient_p, # 正样本的relation的梯度
-                        gradient_n) # 负样本的relation的梯度
+                        -gradient_n) # 负样本的relation的梯度
                        )
         gradient_r = M_r.dot(M2_r) / tot_update_time_r
         self.optimizers['entityMat']._update(gradient_e, unique_idx_e)
         self.optimizers['relationMat']._update(gradient_r, unique_idx_r)
 
         normalize(self.entityMat, unique_idx_e)
-
 
     def getRandomEntity(self, entity_):
         random_entity_ = entity_
@@ -217,7 +220,7 @@ class transE(object):
         else:
             score = score ** 2
 
-        return -np.sum(score, axis=1)
+        return np.sum(score, axis=1)
 
     def _scores_e(self, h_, t_, l_, change_head=True):
         # 给定一个三元组，求替换了head or tail的
@@ -264,20 +267,23 @@ class Relation_Evaluator(object):
         self.xs = test_triplet
         self.tt_h_t = self.convert_triple_into_dict(tot_triplet)
 
-    def positions(self, model):
-        pos = []
-        fpos = [] # Filtered Position
+    def positions(self, mdl):
+        pos = {}  # Raw Positions
+        fpos = {}
 
-        for h, l, t in self.xs:
-            scores_r = model._scores_r(h, t, l).flatten()
-            sortidx_r = np.argsort(scores_r)[::-1]
-            pos.append(np.where(sortidx_r == l)[0][0] + 1)
+        for s, p, o in self.xs:
+            pos[p] = []
+            fpos[p] = []
 
-            rm_idx = self.tt_h_t[h][t]
-            rm_idx = [i for i in rm_idx if i != l]
-            scores_r[rm_idx] = -np.Inf
-            sortidx_r = np.argsort(scores_r)[::-1]
-            fpos.append(np.where(sortidx_r == l)[0][0] + 1)
+            scores_r = mdl._scores_r(s, o, p).flatten()
+            sortidx_r = np.argsort(np.argsort(scores_r))
+            pos[p].append(sortidx_r[p])
+
+            rm_idx = self.tt_h_t[s][o]
+            rm_idx = [i for i in rm_idx if i != p]
+            scores_r[rm_idx] = np.Inf
+            sortidx_r = np.argsort(np.argsort(scores_r))
+            fpos[p].append(sortidx_r[p])
 
         return pos, fpos
 
@@ -286,8 +292,8 @@ class Relation_Evaluator(object):
         mrr_valid = self.p_ranking_scores(pos_v, fpos_v, model.epoch, 'VALID')
 
     def p_ranking_scores(self, pos, fpos, epoch, txt):
-        rpos = pos
-        frpos = fpos
+        rpos = [p for k in pos.keys() for p in pos[k]]
+        frpos = [p for k in fpos.keys() for p in fpos[k]]
         fmrr = self._print_pos(
             np.array(rpos),
             np.array(frpos),
@@ -431,13 +437,6 @@ def grad_sum_matrix(idx):
     tot_update_time = np.array(M.sum(axis=1))  # shape = (num_of_unique_entities, ) 比如M中第0号entity需要更新3次
     return unique_idx, M, tot_update_time
 
-def L2_normalize(vector, axis=1):
-    if np.ndim(vector) == 1:
-        norm = np.linalg.norm(vector, ord=2)
-    else:
-        norm = np.linalg.norm(vector, ord=2, axis=axis)[:,np.newaxis]
-    return vector / norm
-
 def normalize(M, idx=None):
     if idx is None:
         M /= np.sqrt(np.sum(M ** 2, axis=1))[:, np.newaxis]
@@ -462,29 +461,51 @@ def encode2id(triplet, entityId, relationId):
 
     return data
 
+def init_nunif(sz):
+    """
+    Normalized uniform initialization
+
+    See Glorot X., Bengio Y.: "Understanding the difficulty of training
+    deep feedforward neural networks". AISTATS, 2010
+    """
+    bnd = np.sqrt(6) / np.sqrt(sz[0] + sz[1])
+    p = np.uniform(low=-bnd, high=bnd, size=sz)
+    return np.squeeze(p)
+
+def init_nunif2(sz):
+
+    bnd = np.sqrt(6) / np.sqrt(sz[0] + sz[1])
+    p = np.uniform(low=-bnd, high=bnd, size=sz)
+    return np.squeeze(p)
+
 if __name__ == "__main__":
     # 训练模型
     entity2Id = loadEntityId()
     relation2Id = loadRelationId()
     triplet = loadTriplet("data/freebase_mtr100_mte100-train.txt")
     valid_triplet = loadTriplet("data/freebase_mtr100_mte100-valid.txt")
+    test_triplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
     model = transE(triplet, relation2Id, entity2Id,
-                   learning_rate=0.01, dim=100, batch_size=1000,
-                   margin=1, norm='L2', optimizer='AdaGrad', validTriplet=valid_triplet,
-                   evaluator='Entity_Evaluator')
-    model.train(500)  # 论文使用的1000次，early_stopping using the mean predicted ranks on the validation set.
-    model.save()
+                   learning_rate=0.01, dim=100, batch_size=4000,
+                   margin=1, norm='L1', optimizer='AdaGrad',
+                   # validTriplet=valid_triplet,
+                   # testTriplet=test_triplet,
+                   # evaluator='Entity_Evaluator',
+                   # evaluator=None
+                   )
+    # model.train(10)  # 论文使用的1000次，early_stopping using the mean predicted ranks on the validation set.
+    # model.save()
 
-    # # 评估模型
-    # entityVectors = loadVectors(path="output/entityVector.txt")
-    # relationVectors = loadVectors(path="output/relationVector.txt")
-    # testTriplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
-    # import time
-    # t1 = time.time()
-    # print(f"测试集一共有个{len(testTriplet)}个")
-    # testTriplet_ = encode2id(testTriplet, model.entityId, model.relationId)
-    # eval = Relation_Evaluator(testTriplet_, model.data+testTriplet_)
-    # eval(model)
+    # 评估模型
+    entityVectors = loadVectors(path="output/entityVector.txt")
+    relationVectors = loadVectors(path="output/relationVector.txt")
+    testTriplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
+    import time
+    t1 = time.time()
+    print(f"测试集一共有个{len(testTriplet)}个")
+    testTriplet_ = encode2id(testTriplet, model.entityId, model.relationId)
+    eval = Relation_Evaluator(testTriplet_, model.data+testTriplet_)
+    eval(model)
 
 
     
