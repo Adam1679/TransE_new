@@ -480,13 +480,13 @@ def init_nunif(sz):
     deep feedforward neural networks". AISTATS, 2010
     """
     bnd = np.sqrt(6) / np.sqrt(sz[0] + sz[1])
-    p = np.uniform(low=-bnd, high=bnd, size=sz)
+    p = np.random.uniform(low=-bnd, high=bnd, size=sz)
     return np.squeeze(p)
 
 def init_nunif2(sz):
 
     bnd = np.sqrt(6) / np.sqrt(sz[0] + sz[1])
-    p = np.uniform(low=-bnd, high=bnd, size=sz)
+    p = np.random.uniform(low=-bnd, high=bnd, size=sz)
     return np.squeeze(p)
 
 
