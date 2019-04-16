@@ -1,7 +1,7 @@
 from random import uniform, sample
 from numpy import *
 from copy import deepcopy
-
+import os
 class TransE:
     def __init__(self, entityList, relationList, tripleList, margin = 1, learingRate = 0.1, dim = 10, L1 = True):
         self.margin = margin            #TODO:?
@@ -47,13 +47,12 @@ class TransE:
         print("训练开始")
         for cycleIndex in range(cI): #
             Sbatch = self.getSample(150)  #150表示的是采样150个三元组 这是个列表 [(),(),(),,,,]  列表里面有元组
-            Tbatch = []     #元组对（原三元组，打碎的三元组）的列表 ：[((h,r,t),(h',r,t'))] Tbatch是个列表哦
+            Tbatch = set()     #元组对（原三元组，打碎的三元组）的列表 ：[((h,r,t),(h',r,t'))] Tbatch是个列表哦
             for sbatch in Sbatch: #原三元组  sbatch这是个元组  里面的圆括号
                 tripletWithCorruptedTriplet = (sbatch, self.getCorruptedTriplet(sbatch)) #是个元组  把这随机采样的150个三元组打乱  结构是这样的（（没替换的三元组），（替换完后的三元组））
-                if(tripletWithCorruptedTriplet not in Tbatch):
-                    Tbatch.append(tripletWithCorruptedTriplet)  #这是个列表 把上面的三元组加入到列表里面。tripletWithCorruptedTriplet是包含两个三元组的元组，Tbatch是列表
+                Tbatch.add(tripletWithCorruptedTriplet)  #这是个列表 把上面的三元组加入到列表里面。tripletWithCorruptedTriplet是包含两个三元组的元组，Tbatch是列表
 
-            self.update(Tbatch)  #这部分是重点
+            self.update(list(Tbatch))  #这部分是重点
             if cycleIndex % 50 == 0:
                 print("第%d次循环"%cycleIndex)
                 print(self.loss)
@@ -231,17 +230,18 @@ def openTrain(dir,sp="\t"):
     return num, list
 
 if __name__ == '__main__':
-    dirEntity = "../data/FB15k/entity2id.txt"
+    from os.path import join  # 支持跨平台的路径模式
+    dirEntity = join("..","data","FB15k", "entity2id.txt")
     entityIdNum, entityList = openDetailsAndId(dirEntity)           #entityIdNum=14951，entityList是个列表，放的是实体的集合
-    dirRelation = "../data/FB15k/relation2id.txt"
+    dirRelation = join("..","data","FB15k", "relation2id.txt")
     relationIdNum, relationList = openDetailsAndId(dirRelation)   #relationIdNum = 1345；relationList是个列表，放的是关系的集合。
-    dirTrain = "../data/FB15k/train.txt"
+    dirTrain = join("..","data","FB15k", "train.txt")
     tripleNum, tripleList = openTrain(dirTrain)
     print("打开TransE")
     transE = TransE(entityList,relationList,tripleList, margin=1, dim = 100)
     print("TranE初始化")
     transE.initialize()                #随机填充向量值
-    transE.transE(15000)               #把元组对加入到【（），（），，】
-    transE.writeRelationVector("../output/relationVector.txt")
-    transE.writeEntilyVector("../output/entityVector.txt")
+    transE.transE(150)               #把元组对加入到【（），（），，】
+    transE.writeRelationVector(join("..","output", "relationVector.txt"))
+    transE.writeEntilyVector(join("..","output", "entityVector.txt"))
 

@@ -48,8 +48,9 @@ def plotV(a, labels):
     print("ddd")
     plt.savefig('plot_with_labels', dpi = 3000, bbox_inches = 'tight' ,orientation = 'landscape', papertype = 'a0')
 if __name__ == '__main__':
-    dirEntity = "c:\\entityVector.txt"
-    dirRelation = "c:\\relationVector.txt"
+    import os
+    dirEntity = os.path.join("..", "output", "entityVector.txt")
+    dirRelation = os.path.join("..", "output", "relationVector.txt")
     matEntity, nameEntity = loadData(dirEntity)
     matRelation, nameRelation = loadData(dirRelation)
     mat = row_stack((matEntity, matRelation))
