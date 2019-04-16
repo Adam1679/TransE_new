@@ -5,6 +5,7 @@ import scipy.sparse as sp
 import random
 import os
 import sys
+import time
 logger = logging.getLogger(__name__)
 logger.setLevel(level = logging.INFO)
 handler = logging.FileHandler("output/log.txt")
@@ -106,7 +107,7 @@ class transE(object):
                 # if count % 1000 == 0:
                 logger.info(f"完成{count}个minibatch，损失函数为{self.batch_loss}")
 
-            self.x = logger.info(f"完成{self.epoch}轮训练，损失函数为{self.loss / len(self.data)}, 超过margin的样本数量为{self.violations}")
+            self.x = logger.info(f"完成{self.epoch}轮训练，损失函数为{self.loss/count}, 超过margin的样本数量为{self.violations}")
             if self.evaluator:
                 self.evaluator(self)
 
@@ -234,7 +235,16 @@ class transE(object):
         else:
             score = score ** 2
 
-        return -np.sum(score, axis=1)
+        return np.sum(score, axis=1)
+
+    def loadModel(self, entity_path, replation_path):
+        entityVectors = loadVectors(path=entity_path)
+        relationVectors = loadVectors(path=replation_path)
+        for e, v in entityVectors.items():
+            self.entityMat[self.entityId[e]] = v
+        for r, v in relationVectors.items():
+            self.relationMat[self.relationId[r]] = v
+
 
 class SGD(object):
     """
@@ -277,14 +287,13 @@ class Relation_Evaluator(object):
 
             scores_r = mdl._scores_r(s, o, p).flatten()
             sortidx_r = np.argsort(np.argsort(scores_r))
-            pos[p].append(sortidx_r[p])
+            pos[p].append(sortidx_r[p]+1)
 
             rm_idx = self.tt_h_t[s][o]
             rm_idx = [i for i in rm_idx if i != p]
             scores_r[rm_idx] = np.Inf
             sortidx_r = np.argsort(np.argsort(scores_r))
-            fpos[p].append(sortidx_r[p])
-
+            fpos[p].append(sortidx_r[p]+1)
         return pos, fpos
 
     def __call__(self, model):
@@ -319,7 +328,9 @@ class Relation_Evaluator(object):
         mean_pos = np.mean(pos)
         hits_results = []
         for h in range(0, len(hits)):
-            hits_results.append(np.mean(pos <= hits[h]).sum() * 100)
+            k = np.mean(pos <= hits[h])
+            k2 = k.sum()
+            hits_results.append(k2 * 100)
         return mrr, mean_pos, hits_results
 
     def convert_triple_into_dict(self, triplet):
@@ -348,25 +359,25 @@ class Entity_Evaluator(object):
         for head, label, tail in self.test_triplet:
             # *************  换head的损失函数  ********************
             scores_e_h = model._scores_e(head, tail, label, change_head=True).flatten()
-            sortidx_e_h = np.argsort(scores_e_h)[::-1]
-            pos.append(np.where(sortidx_e_h == head)[0][0] + 1)
+            sortidx_e_h = np.argsort(np.argsort(scores_e_h))
+            pos.append(sortidx_e_h[head] + 1)
 
             rm_idx = self.tt_l_t[label][tail]
             rm_idx = [i for i in rm_idx if i != head]
-            scores_e_h[rm_idx] = -np.Inf
-            sortidx_e_h = np.argsort(scores_e_h)[::-1]
-            fpos.append(np.where(sortidx_e_h == head)[0][0] + 1)
+            scores_e_h[rm_idx] = np.Inf
+            sortidx_e_h = np.argsort(np.argsort(scores_e_h))
+            fpos.append(sortidx_e_h[head] + 1)
 
             # *************  换tail的损失函数  ********************
             scores_e_t = model._scores_e(head, tail, label, change_head=False).flatten()
-            sortidx_e_t = np.argsort(scores_e_t)[::-1]
-            pos.append(np.where(sortidx_e_t == tail)[0][0] + 1)
+            sortidx_e_t = np.argsort(np.argsort(scores_e_t))
+            pos.append(sortidx_e_t[tail] + 1)
 
             rm_idx = self.tt_h_l[head][label]
             rm_idx = [i for i in rm_idx if i != tail]
-            scores_e_t[rm_idx] = -np.Inf
-            sortidx_e_t = np.argsort(scores_e_t)[::-1]
-            fpos.append(np.where(sortidx_e_t == tail)[0][0] + 1)
+            scores_e_t[rm_idx] = np.Inf
+            sortidx_e_t = np.argsort(np.argsort(scores_e_t))
+            fpos.append(sortidx_e_t[tail] + 1)
 
         return pos, fpos
 
@@ -478,6 +489,7 @@ def init_nunif2(sz):
     p = np.uniform(low=-bnd, high=bnd, size=sz)
     return np.squeeze(p)
 
+
 if __name__ == "__main__":
     # 训练模型
     entity2Id = loadEntityId()
@@ -486,26 +498,25 @@ if __name__ == "__main__":
     valid_triplet = loadTriplet("data/freebase_mtr100_mte100-valid.txt")
     test_triplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
     model = transE(triplet, relation2Id, entity2Id,
-                   learning_rate=0.01, dim=100, batch_size=4000,
+                   learning_rate=0.01, dim=100, batch_size=20000,
                    margin=1, norm='L1', optimizer='AdaGrad',
-                   # validTriplet=valid_triplet,
-                   # testTriplet=test_triplet,
-                   # evaluator='Entity_Evaluator',
-                   # evaluator=None
-                   )
-    # model.train(10)  # 论文使用的1000次，early_stopping using the mean predicted ranks on the validation set.
-    # model.save()
+                   validTriplet=valid_triplet,
+                   testTriplet=test_triplet,
+                   evaluator='Relation_Evaluator')
+    model.train(150)  # 论文使用的1000次，early_stopping using the mean predicted ranks on the validation set.
+    model.save()
 
-    # 评估模型
+    # # 评估模型
     entityVectors = loadVectors(path="output/entityVector.txt")
     relationVectors = loadVectors(path="output/relationVector.txt")
     testTriplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
-    import time
-    t1 = time.time()
+    # model.loadModel("output/entityVector.txt", "output/relationVector.txt")
     print(f"测试集一共有个{len(testTriplet)}个")
     testTriplet_ = encode2id(testTriplet, model.entityId, model.relationId)
+    t1 = time.time()
     eval = Relation_Evaluator(testTriplet_, model.data+testTriplet_)
     eval(model)
+
 
 
     

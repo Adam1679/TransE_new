@@ -305,9 +305,9 @@ if __name__ == "__main__":
     # model.save()
 
     # 评估模型
-    entityVectors = loadVectors(path="output/entityVector.txt")
-    relationVectors = loadVectors(path="output/relationVector.txt")
-    testTriplet = loadTriplet("data/freebase_mtr100_mte100-test.txt")
+    entityVectors = loadVectors(path=r"output/entityVector.txt")
+    relationVectors = loadVectors(path=r"output/relationVector.txt")
+    testTriplet = loadTriplet(r"data/freebase_mtr100_mte100-test.txt")
     import time
     t1 = time.time()
     print(f"测试集一共有个{len(testTriplet)}个")
@@ -318,7 +318,7 @@ if __name__ == "__main__":
     # mean_rank, hit10 = evaluate1(testTriplet, entityVectors, relationVectors, hits=10, limit=100)
     # print(f"time: {time.time()-t1}")
     # print(f"mean rank: {mean_rank}, HITs10: {hit10}")
-    
-    
+
+
 
 
